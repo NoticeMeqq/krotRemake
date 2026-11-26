@@ -10,6 +10,9 @@ if [ "$VK_SIDE" = server ]; then
 else
   : "${VK_EXIT_IP:?}"
   command -v ping >/dev/null || die "нет утилиты ping (пакет iputils-ping), проверка связности невозможна"
+  if [ -n "${VK_ENDPOINT_IPV6:-}" ]; then
+    systemctl start vpnkit-cascade-failover.service || die "каскад недоступен по IPv4 и IPv6"
+  fi
   ok=0
   for _ in $(seq 1 15); do
     hs=$(awg show awg0 latest-handshakes | awk '{print $2}')

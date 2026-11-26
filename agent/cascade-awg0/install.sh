@@ -9,6 +9,15 @@ if [ "$VK_SIDE" = client ] && ! command -v ping >/dev/null; then
   command -v ping >/dev/null || die "утилита ping недоступна после установки iputils-ping"
 fi
 conf=/etc/amnezia/amneziawg/awg0.conf
+if [ "$VK_SIDE" = client ]; then
+  touch "$VK_RUN/cascade-timer-managed"
+  if systemctl is-enabled -q vpnkit-cascade-failover.timer 2>/dev/null; then
+    touch "$VK_RUN/cascade-timer-enabled"
+  fi
+  if [ -f /etc/systemd/system/vpnkit-cascade-failover.timer ]; then
+    systemctl stop vpnkit-cascade-failover.timer vpnkit-cascade-failover.service
+  fi
+fi
 tunip=${VK_ADDR%/*}
 mkdir -p /etc/amnezia/amneziawg; chmod 700 /etc/amnezia/amneziawg
 [ -e "$conf" ] || echo "awg0" >> "$VK_RUN/created.list"
@@ -97,3 +106,39 @@ else
   systemctl start awg-quick@awg0
 fi
 say "туннель awg0 ($VK_SIDE): $(ip -br addr show awg0 | awk '{print $3}')"
+
+if [ "$VK_SIDE" = client ]; then
+  if [ -n "${VK_ENDPOINT_IPV6:-}" ]; then
+    put /usr/local/sbin/vpnkit-cascade-failover 755 < "$VK_RUN/src/vpnkit-cascade-failover.sh"
+    cat <<EOF | put /etc/systemd/system/vpnkit-cascade-failover.service 644
+[Unit]
+Description=Krot cascade endpoint failover
+After=awg-quick@awg0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpnkit-cascade-failover $VK_PEER_PUBLIC $VK_PEER_TUN $VK_ENDPOINT $VK_ENDPOINT_IPV6
+EOF
+    cat <<'EOF' | put /etc/systemd/system/vpnkit-cascade-failover.timer 644
+[Unit]
+Description=Check the Krot cascade endpoint
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable -q --now vpnkit-cascade-failover.timer
+  elif [ -f /etc/systemd/system/vpnkit-cascade-failover.timer ]; then
+    systemctl disable -q vpnkit-cascade-failover.timer
+    for file in /etc/systemd/system/vpnkit-cascade-failover.{timer,service} /usr/local/sbin/vpnkit-cascade-failover; do
+      snapshot "$file"
+      rm -f -- "$file"
+    done
+    systemctl daemon-reload
+  fi
+fi

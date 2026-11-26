@@ -101,6 +101,16 @@ func prepareCascade(inv *inventory.Inventory, n *inventory.Node, p map[string]st
 		return nil, fmt.Errorf("cascade-awg0 ставится только на entry и exit")
 	}
 	cfg := exit.Modules["cascade-awg0"]
+	var endpointIPv6 net.IP
+	if v, ok := cfg["endpoint_ipv6"]; ok {
+		endpointIPv6 = net.ParseIP(fmt.Sprint(v))
+		if endpointIPv6 == nil || endpointIPv6.To4() != nil || !endpointIPv6.IsGlobalUnicast() {
+			return nil, fmt.Errorf("cascade-awg0 endpoint_ipv6: нужен маршрутизируемый адрес IPv6 без скобок")
+		}
+		if net.ParseIP(exit.Host).To4() == nil {
+			return nil, fmt.Errorf("cascade-awg0 endpoint_ipv6: host выхода должен быть адресом IPv4")
+		}
+	}
 	tunNet := "10.100.0.0/30"
 	if v, ok := cfg["tunnel_net"]; ok {
 		tunNet = fmt.Sprint(v)
@@ -179,6 +189,10 @@ func prepareCascade(inv *inventory.Inventory, n *inventory.Node, p map[string]st
 
 	p["TUN_NET"] = tunNet
 	p["MTU"] = "1390"
+	if endpointIPv6 != nil {
+		// Leave room for the IPv6 outer header and the maximum AWG padding on a 1500-byte link.
+		p["MTU"] = "1350"
+	}
 	p["PORT"] = port
 	p["PSK"] = psk
 	p["HPK"] = hpk
@@ -197,6 +211,9 @@ func prepareCascade(inv *inventory.Inventory, n *inventory.Node, p map[string]st
 		p["PRIVATE"] = entryKey
 		p["PEER_PUBLIC"] = exitPub
 		p["ENDPOINT"] = net.JoinHostPort(exit.Host, port)
+		if endpointIPv6 != nil {
+			p["ENDPOINT_IPV6"] = net.JoinHostPort(endpointIPv6.String(), port)
+		}
 		p["TG_PREFIXES"] = telegramPrefixes
 	}
 	return p, nil

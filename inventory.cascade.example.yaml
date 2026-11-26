@@ -24,3 +24,5 @@ nodes:
     #       jump: {host: 203.0.113.10, user: root, key: ~/.krot/keys/ru_ed25519}}
     modules:
       nginx-tls: {names: [en.example.org]}   # витрина выхода (по желанию)
+      # Если у обоих узлов есть IPv6 и UDP-порт каскада доступен по IPv6:
+      # cascade-awg0: {endpoint_ipv6: "2001:db8::20"}

@@ -22,6 +22,9 @@ params:
   type: port
   default: случайный 20000–60000
   note: задаётся у выхода
+- name: endpoint_ipv6
+  type: string
+  note: резервный IPv6-адрес выхода без скобок (задаётся у выхода)
 secrets:
 - '<выход>/cascade-awg0/*: ключи обоих концов, PSK, HeaderProtectionKey, обфускация, порт'
 ports:
@@ -40,9 +43,12 @@ ip_rules:
   rule: fwmark 0x3 table 200
 units:
 - awg-quick@awg0.service
+- vpnkit-cascade-failover.timer (entry, если задан endpoint_ipv6)
 files:
 - /etc/amnezia/amneziawg/awg0.conf
 - /etc/nftables.d/20-vpnkit-cascade.nft
+- /etc/systemd/system/vpnkit-cascade-failover.{service,timer}
+- /usr/local/sbin/vpnkit-cascade-failover
 versions: {}
 health:
 - node: entry

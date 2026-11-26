@@ -46,6 +46,22 @@ func TestCascadePortReconfiguration(t *testing.T) {
 	if prepare(entry)["PORT"] != "443" {
 		t.Fatal("saved port was lost")
 	}
+	if p := prepare(entry); p["ENDPOINT_IPV6"] != "" || p["MTU"] != "1390" {
+		t.Fatal("existing inventory unexpectedly enabled IPv6 fallback")
+	}
+	cfg["endpoint_ipv6"] = "2001:db8::10"
+	client = prepare(entry)
+	if client["ENDPOINT_IPV6"] != "[2001:db8::10]:443" ||
+		client["ENDPOINT"] != "192.0.2.1:443" || client["MTU"] != "1350" || prepare(exit)["MTU"] != client["MTU"] {
+		t.Fatal("IPv6 fallback must reuse the configured port and apply the same MTU on both sides")
+	}
+	for _, invalid := range []string{"192.0.2.1", "::ffff:192.0.2.1", "fe80::1", "[2001:db8::10]"} {
+		cfg["endpoint_ipv6"] = invalid
+		if _, err := Prepare(inv, entry, "cascade-awg0", store); err == nil {
+			t.Errorf("invalid IPv6 endpoint %q accepted", invalid)
+		}
+	}
+	delete(cfg, "endpoint_ipv6")
 	cfg["port"] = 65536
 	if _, err := Prepare(inv, exit, "cascade-awg0", store); err == nil {
 		t.Fatal("invalid port accepted")
