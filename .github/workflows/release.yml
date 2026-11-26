@@ -112,7 +112,8 @@ jobs:
 
   app-macos:
     needs: version
-    runs-on: macos-latest
+    # Сборка darwin/universal включает обе архитектуры. Intel — отдельная очередь раннеров.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
