@@ -57,6 +57,8 @@ files:
 - /etc/nginx/modules-enabled/99-vpnkit-stream.conf
 - /etc/nginx/stream.d/vpnkit-443.conf (пишет vpnkit-gen.py)
 - /etc/letsencrypt/renewal-hooks/deploy/vpnkit-reload.sh
+- /usr/local/sbin/vpnkit-certbot (entry)
+- /etc/systemd/system/certbot.service.d/50-vpnkit-cascade.conf (entry)
 - /etc/nftables.d/40-vpnkit-nginx.nft
 - /etc/vpnkit/nginx.env
 - /var/www/vpnkit-<имя>/

@@ -12,6 +12,12 @@ entry=1; [ "$VK_ROLE" = exit ] && entry=0
 dpkg -s nginx >/dev/null 2>&1 || echo nginx >> "$VK_RUN/created.list"
 apt_install nginx libnginx-mod-stream certbot
 systemctl enable -q nginx
+certbot_cmd=(/usr/bin/certbot)
+if [ "$VK_ROLE" = entry ]; then
+  certbot_cmd=(/usr/local/sbin/vpnkit-certbot)
+  put "${certbot_cmd[0]}" 755 < "$VK_RUN/src/vpnkit-certbot.py"
+  say "запросы ACME к Let's Encrypt пойдут через awg0"
+fi
 
 # штатный сайт Ubuntu слушает :80 как default — убрать (снимок вернёт при откате)
 if [ -e /etc/nginx/sites-enabled/default ]; then snapshot /etc/nginx/sites-enabled/default; rm -f /etc/nginx/sites-enabled/default; fi
@@ -58,8 +64,8 @@ systemctl reload-or-restart nginx
 mail=(--register-unsafely-without-email); [ -n "$VK_EMAIL" ] && mail=(--email "$VK_EMAIL")
 for n in $VK_NAMES; do
   [ -f "/etc/letsencrypt/live/$n/fullchain.pem" ] && { say "сертификат $n уже есть"; continue; }
-  out=$(certbot certonly --webroot -w /var/www/acme -d "$n" --key-type ecdsa --non-interactive \
-        --agree-tos "${mail[@]}" --keep-until-expiring 2>&1) || die "certbot $n: $(tail -5 <<<"$out")"
+  out=$("${certbot_cmd[@]}" certonly --webroot -w /var/www/acme -d "$n" --key-type ecdsa --non-interactive \
+        --agree-tos "${mail[@]}" --keep-until-expiring 2>&1) || die "certbot $n: $(tail -12 <<<"$out")"
   say "сертификат $n выпущен"
 done
 printf '#!/bin/sh\n# vpnkit: после продления — перечитать сертификаты (sing-box держит старый в памяти, P-20)\nsystemctl reload nginx\nsystemctl try-restart sing-box\n' \
@@ -147,4 +153,9 @@ snapshot /etc/nginx/stream.d/vpnkit-443.conf
 /usr/local/sbin/vpnkit-gen.py build >/dev/null
 nginx -t -q
 systemctl reload-or-restart nginx
+if [ "$VK_ROLE" = entry ]; then
+  printf '[Service]\nExecStart=\nExecStart=%s -q renew\n' "${certbot_cmd[0]}" \
+    | put /etc/systemd/system/certbot.service.d/50-vpnkit-cascade.conf 644
+  systemctl daemon-reload
+fi
 say "nginx: $(nginx -v 2>&1 | cut -d/ -f2), имена: $VK_NAMES$([ $entry = 1 ] && echo ", XHTTP-порт $VK_XHTTP_PORT для $VK_TUNNEL_NAME")"

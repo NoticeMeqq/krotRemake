@@ -1,5 +1,8 @@
 # nginx-tls: до изменений — имена смотрят на этот узел, порты не заняты чужими.
 : "${VK_NAMES:?}" "${VK_HOST:?}" "${VK_ROLE:?}" "${VK_XHTTP_PORT:=4443}"
+if [ "$VK_ROLE" = entry ]; then
+  ip link show awg0 >/dev/null 2>&1 || die "нет awg0 для ACME — сначала установите cascade-awg0"
+fi
 bad=0
 for n in $VK_NAMES; do
   a=$(getent ahostsv4 "$n" | awk '{print $1}' | sort -u | tr '\n' ' ')

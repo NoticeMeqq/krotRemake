@@ -1,5 +1,8 @@
 # nginx-tls: откат прогона. Сертификаты не удаляются (повторный выпуск упирается в лимиты Let's Encrypt).
 restore_snapshot
+if changed /etc/systemd/system/certbot.service.d/50-vpnkit-cascade.conf; then
+  systemctl daemon-reload
+fi
 systemctl reload nftables 2>/dev/null || true
 if grep -qxF nginx "$VK_RUN/created.list" 2>/dev/null; then
   systemctl disable -q --now nginx 2>/dev/null || true   # пакет оставляем, службу гасим

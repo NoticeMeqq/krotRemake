@@ -1,7 +1,7 @@
 # nginx-tls — сайт-витрина, Let's Encrypt и разбор порта 443 по имени
 
 **Роли:** entry, exit, solo.  
-**Зависит от:** base-host.  
+**Зависит от:** base-host, на entry также cascade-awg0.\
 **Код:** [agent/nginx-tls/](../../agent/nginx-tls/)
 
 Модуль делает сервер похожим на обычный сайт: выпускает сертификаты Let's Encrypt для указанных имён, разворачивает статическую витрину на каждом имени и открывает порты 80/443. На entry весь TCP/443 разбирается по SNI через `stream`, а на exit витрина отвечает напрямую на 443. На этом фундаменте держатся VLESS, Hysteria2, подписка и маска Telegram-прокси.
@@ -46,6 +46,8 @@
 ### Сертификаты
 - Выпускаются `certbot certonly --webroot -w /var/www/acme -d <имя> --key-type ecdsa`.
 - Если сертификат уже есть — повторный выпуск не выполняется.
+- На entry выпуск и продление используют `/usr/local/sbin/vpnkit-certbot`: он направляет HTTPS-запросы к API Let's Encrypt через `awg0`. Для проверки HTTP-01 Let's Encrypt обращается к публичному TCP/80 узла, где nginx отдаёт файлы из `/var/www/acme`.
+- Проверить продление на entry можно командой `/usr/local/sbin/vpnkit-certbot renew --dry-run`. Автопродление использует тот же скрипт через drop-in для `certbot.service`.
 - При откате сертификаты не удаляются, чтобы не упереться в лимиты Let's Encrypt.
 
 ### Поведение по ролям
