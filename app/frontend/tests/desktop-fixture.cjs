@@ -42,7 +42,12 @@ const test = base.extend({
                     get: (_, method) => (...args) => window.krotBridge(method, args),
                 });
                 window.go = {main: {App: app}};
-                window.runtime = {EventsOnMultiple: () => {}};
+                const events = new Map();
+                window.runtime = {
+                    EventsOnMultiple: (name, handler) => events.set(name, handler),
+                    BrowserOpenURL: (url) => window.krotBridge('BrowserOpenURL', [url]),
+                };
+                window.emitKrotEvent = (name, ...args) => events.get(name)?.(...args);
             });
             await page.goto(origin);
             return (method) => calls.filter(([name]) => name === method).map(([, ...args]) => args);
