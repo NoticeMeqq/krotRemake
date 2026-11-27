@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telegram-бот администратора узла Крот: состояние, клиенты подписки, трафик.
+"""Telegram-бот администратора узла Крот: состояние, перезагрузка, клиенты и трафик.
 
 Токен и получатели — те же, что у оповещений мониторинга (/etc/vpnkit/alert.env: TG_TOKEN, TG_CHATS).
 Отвечает только тем, чьи chat id перечислены в TG_CHATS. Клиентами подписки управляет через
@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import sqlite3
 import subprocess
 import time
@@ -48,6 +49,9 @@ HEALTH = {
     "missing": ("Не установлен", MUTED),
     "unknown": ("Нет данных", "#f1ad49"),
 }
+REBOOT_CONFIRM_SECONDS = 60
+REBOOT_DELAY_SECONDS = 15
+pending_reboots = {}
 
 
 def load_env():
@@ -359,7 +363,8 @@ def button(text, callback, style=None):
 def menu(section=None, days=7):
     nav = [button("👥 Клиенты", "clients", "primary" if section == "clients" else None),
            button("📊 Трафик", "st:7", "primary" if section == "traffic" else None),
-           button("⚙ Состояние", "status", "primary" if section == "status" else None)]
+           button("⚙ Состояние", "status", "primary" if section == "status" else None),
+           button("🖥 Сервер", "server", "primary" if section == "server" else None)]
     rows = []
     if section == "traffic":
         rows = [[button(label, f"st:{period}", "primary" if days == period else None)
@@ -367,7 +372,7 @@ def menu(section=None, days=7):
                 [button("↻ Обновить", f"st:{days}"), button("Профили AWG", f"sd:{days}")]]
     elif section == "status":
         rows = [[button("↻ Обновить", "status"), button("Подробности", "status:details")]]
-    return {"inline_keyboard": rows + [nav]}
+    return {"inline_keyboard": rows + [nav[:2], nav[2:]]}
 
 
 def clients_view():
@@ -438,9 +443,75 @@ def show_status(chat, message=None, details=False):
     send_dashboard(chat, png, caption, keyboard, message)
 
 
-def on_callback(cb):
-    chat = cb["message"]["chat"]["id"]
+def private_admin(message, sender):
+    chat = message.get("chat", {})
+    return chat.get("type") == "private" and chat.get("id") == sender and sender in ADMINS
+
+
+def show_server(chat):
+    keyboard = menu("server")
+    keyboard["inline_keyboard"].insert(0, [button("Перезагрузить сервер", "server:reboot", "danger")])
+    send(chat, f"Управление сервером\nУзел: {socket.gethostname()}", keyboard)
+
+
+def schedule_reboot():
+    rc, units = run(["/usr/bin/systemctl", "list-units", "--no-legend", "--plain", "--no-pager",
+                     "--state=active,activating", "vpnkit-deadman-*.timer", "vpnkit-deadman-*.service"], timeout=5)
+    if rc:
+        return "Не удалось проверить состояние установки. Перезагрузка не запланирована."
+    if units:
+        return "На сервере идёт установка, обновление или откат модуля. Повторите после завершения."
+    # То же имя таймера, что в пульте: systemd отклонит вторую заявку.
+    rc, out = run(["/usr/bin/systemd-run", "--quiet", "--unit=vpnkit-dashboard-reboot",
+                   f"--on-active={REBOOT_DELAY_SECONDS}s", "--timer-property=AccuracySec=1s",
+                   "/usr/bin/systemctl", "reboot"], timeout=5)
+    if rc:
+        print(f"ошибка планирования перезагрузки: {out}", flush=True)
+        return "Не удалось запланировать перезагрузку. Возможно, она уже запланирована."
+    return (f"Узел {socket.gethostname()} перезагрузится через {REBOOT_DELAY_SECONDS} с. "
+            "На время перезагрузки VPN и бот могут быть недоступны.")
+
+
+def on_server_callback(cb):
+    message = cb.get("message") or {}
+    answer = {"callback_query_id": cb["id"]}
+    if not private_admin(message, cb.get("from", {}).get("id")):
+        api("answerCallbackQuery", **answer, text="Управление доступно администратору в личном чате.", show_alert=True)
+        return
+    chat = message["chat"]["id"]
     data = cb["data"]
+    if data == "server":
+        api("answerCallbackQuery", **answer)
+        show_server(chat)
+        return
+    if data == "server:reboot":
+        api("answerCallbackQuery", **answer)
+        nonce = uuid.uuid4().hex
+        keyboard = {"inline_keyboard": [[button("Да, перезагрузить", f"server:confirm:{nonce}", "danger"),
+                                         button("Отмена", f"server:cancel:{nonce}")]]}
+        prompt = api("sendMessage", chat_id=chat, reply_markup=keyboard,
+                     text=f"Перезагрузить узел {socket.gethostname()}? VPN и бот временно отключатся. "
+                          f"Подтвердите в течение {REBOOT_CONFIRM_SECONDS} с.")
+        pending_reboots[chat] = (nonce, prompt["result"]["message_id"], time.monotonic() + REBOOT_CONFIRM_SECONDS)
+        return
+
+    _, action, nonce = data.split(":", 2)
+    pending = pending_reboots.get(chat)
+    if (not pending or pending[:2] != (nonce, message.get("message_id")) or time.monotonic() >= pending[2]):
+        api("answerCallbackQuery", **answer, text="Запрос уже завершён или истёк. Откройте панель сервера.", show_alert=True)
+        return
+    del pending_reboots[chat]
+    api("answerCallbackQuery", **answer)
+    result = schedule_reboot() if action == "confirm" else "Перезагрузка отменена."
+    api("editMessageText", chat_id=chat, message_id=message["message_id"], text=result, reply_markup=menu("server"))
+
+
+def on_callback(cb):
+    data = cb["data"]
+    if data in {"server", "server:reboot"} or data.startswith(("server:confirm:", "server:cancel:")):
+        on_server_callback(cb)
+        return
+    chat = cb["message"]["chat"]["id"]
     api("answerCallbackQuery", callback_query_id=cb["id"])
     if data == "main":
         send(chat, "Крот: что показать?", menu())
@@ -476,7 +547,12 @@ def on_message(m):
     chat = m["chat"]["id"]
     text = (m.get("text") or "").strip()
     reply = (m.get("reply_to_message") or {}).get("text", "")
-    if reply.startswith("Имя нового клиента"):
+    if text.partition("@")[0] == "/servers":
+        if private_admin(m, m.get("from", {}).get("id")):
+            show_server(chat)
+        else:
+            send(chat, "Управление доступно администратору в личном чате.")
+    elif reply.startswith("Имя нового клиента"):
         if not NAME_RE.match(text):
             send(chat, "Имя: латиница, цифры, . _ -, до 32 знаков.", menu())
             return
@@ -501,7 +577,8 @@ def main():
         api("setMyCommands", commands=[{"command": "menu", "description": "Меню"},
                                        {"command": "status", "description": "Состояние узла"},
                                        {"command": "clients", "description": "Клиенты"},
-                                       {"command": "stats", "description": "График трафика"}])
+                                       {"command": "stats", "description": "График трафика"},
+                                       {"command": "servers", "description": "Управление сервером"}])
     except Exception:
         pass
     offset = 0
