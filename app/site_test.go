@@ -6,7 +6,10 @@ import (
 	"compress/gzip"
 	"io"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -51,5 +54,23 @@ func TestArchiveSitePreservesDependencies(t *testing.T) {
 	files["assets/link"] = &fstest.MapFile{Mode: fs.ModeSymlink | 0o777, Data: []byte("../index.html")}
 	if _, err := archiveSite(files, io.Discard); err == nil {
 		t.Fatal("archiveSite accepted a symlink")
+	}
+}
+
+func TestDeploySiteDirectoryRequiresNonemptyIndex(t *testing.T) {
+	dir := t.TempDir()
+	app := NewApp()
+	for _, name := range []string{"missing index", "empty index"} {
+		t.Run(name, func(t *testing.T) {
+			if name == "empty index" {
+				if err := os.WriteFile(filepath.Join(dir, "index.html"), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := app.DeploySiteDirectory("entry", "192.0.2.10", "site.example", dir); err == nil ||
+				!strings.Contains(err.Error(), "непустой файл index.html") {
+				t.Fatalf("got %v, want a missing or empty index error", err)
+			}
+		})
 	}
 }
