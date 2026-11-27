@@ -1,14 +1,77 @@
 package backup
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"filippo.io/age"
 )
+
+func TestVerifyClientAWGFirewall(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("KROT_HOME", dir)
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "age.key"), []byte(id.String()+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const dns = "etc/dnsmasq.d/30-vpnkit-awg2.conf"
+	for _, tc := range []struct {
+		name    string
+		files   []string
+		missing []string
+	}{
+		{"current firewall name", []string{"etc/nftables.d/30-vpnkit-client-awg2.nft", dns}, nil},
+		{"legacy firewall name", []string{"etc/nftables.d/30-krot-client-awg2.nft", dns}, nil},
+		{"unrelated firewall file", []string{"etc/nftables.d/30-vpnkit-other.nft", dns}, []string{clientFirewallPattern}},
+		{"missing DNS file", []string{"etc/nftables.d/30-vpnkit-client-awg2.nft"}, []string{"etc/dnsmasq.d/30-vpnkit-*.conf"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var encrypted bytes.Buffer
+			enc, err := age.Encrypt(&encrypted, id.Recipient())
+			if err != nil {
+				t.Fatal(err)
+			}
+			gz := gzip.NewWriter(enc)
+			archive := tar.NewWriter(gz)
+			files := append([]string{markerDir + "client-awg"}, tc.files...)
+			for _, name := range files {
+				if err := archive.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o600}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, writer := range []io.Closer{archive, gz, enc} {
+				if err := writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			file := filepath.Join(t.TempDir(), "test.tar.gz.age")
+			if err := os.WriteFile(file, encrypted.Bytes(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			report, err := Verify(file, "entry")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(report.Missing, tc.missing) {
+				t.Errorf("missing = %v, want %v", report.Missing, tc.missing)
+			}
+		})
+	}
+}
 
 func TestCreateBackupScript(t *testing.T) {
 	if runtime.GOOS != "linux" {
