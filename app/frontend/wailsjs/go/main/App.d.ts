@@ -9,6 +9,12 @@ import {reach} from '../models';
 
 export function AddClient(arg1:string,arg2:string,arg3:string):Promise<main.CardView>;
 
+export function ChooseSiteDirectory():Promise<string>;
+export function DeploySiteDirectory(arg1:string,arg2:string,arg3:string,arg4:string):Promise<number>;
+export function ReadSite(arg1:string,arg2:string):Promise<main.SitePage>;
+export function SaveSiteHTML(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+export function SiteDomains(arg1:string):Promise<Array<string>>;
+
 export function ServerStatistics(arg1:string,arg2:number):Promise<main.ServerStats>;
 
 export function RestartServer(arg1:string,arg2:string):Promise<void>;

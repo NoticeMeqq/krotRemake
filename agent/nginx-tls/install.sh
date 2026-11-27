@@ -80,10 +80,12 @@ e() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/[&|\\]/\\&
 for n in $VK_NAMES; do
   root=/var/www/vpnkit-$n
   mkdir -p "$root"
-  sed -e "s|__LANG__|$(e "$VK_SITE_LANG")|g" -e "s|__TITLE__|$(e "$VK_SITE_TITLE")|g" \
-      -e "s|__TAGLINE__|$(e "$VK_SITE_TAGLINE")|g" -e "s|__P1__|$(e "$VK_SITE_P1")|g" \
-      -e "s|__P2__|$(e "$VK_SITE_P2")|g" -e "s|__YEAR__|$year|g" "$VK_RUN/src/index.html" \
-    | put "$root/index.html" 644
+  if [ ! -e "$root/index.html" ]; then
+    sed -e "s|__LANG__|$(e "$VK_SITE_LANG")|g" -e "s|__TITLE__|$(e "$VK_SITE_TITLE")|g" \
+        -e "s|__TAGLINE__|$(e "$VK_SITE_TAGLINE")|g" -e "s|__P1__|$(e "$VK_SITE_P1")|g" \
+        -e "s|__P2__|$(e "$VK_SITE_P2")|g" -e "s|__YEAR__|$year|g" "$VK_RUN/src/index.html" \
+      | put "$root/index.html" 644
+  fi
   tls="    ssl_certificate     /etc/letsencrypt/live/$n/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$n/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;

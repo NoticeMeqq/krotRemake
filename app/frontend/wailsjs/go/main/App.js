@@ -10,6 +10,26 @@ export function AddClient(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddClient'](arg1, arg2, arg3);
 }
 
+export function ChooseSiteDirectory() {
+  return window['go']['main']['App']['ChooseSiteDirectory']();
+}
+
+export function DeploySiteDirectory(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeploySiteDirectory'](arg1, arg2, arg3, arg4);
+}
+
+export function ReadSite(arg1, arg2) {
+  return window['go']['main']['App']['ReadSite'](arg1, arg2);
+}
+
+export function SaveSiteHTML(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SaveSiteHTML'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SiteDomains(arg1) {
+  return window['go']['main']['App']['SiteDomains'](arg1);
+}
+
 export function ServerStatistics(arg1, arg2) {
   return window['go']['main']['App']['ServerStatistics'](arg1, arg2);
 }

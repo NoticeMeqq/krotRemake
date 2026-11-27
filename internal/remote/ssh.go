@@ -160,6 +160,11 @@ func (cl *Client) Run(ctx context.Context, script string) (Result, error) {
 // RunStdin выполняет одну команду, подавая ей stdin. Так секреты (токены) попадают в
 // программу мимо её аргументов, которые на узле видны всем через ps (P-50).
 func (cl *Client) RunStdin(ctx context.Context, cmd, stdin string) (Result, error) {
+	return cl.RunReader(ctx, cmd, strings.NewReader(stdin))
+}
+
+// RunReader streams binary input to the command without keeping it in memory.
+func (cl *Client) RunReader(ctx context.Context, cmd string, stdin io.Reader) (Result, error) {
 	s, err := cl.c.NewSession()
 	if err != nil {
 		return Result{}, err
@@ -167,7 +172,7 @@ func (cl *Client) RunStdin(ctx context.Context, cmd, stdin string) (Result, erro
 	defer s.Close()
 	var out, errb bytes.Buffer
 	s.Stdout, s.Stderr = &out, &errb
-	s.Stdin = strings.NewReader(stdin)
+	s.Stdin = stdin
 	done := make(chan error, 1)
 	go func() { done <- s.Run(cmd) }()
 	select {

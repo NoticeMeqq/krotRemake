@@ -130,6 +130,21 @@ main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 80px; }
 .server-info-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .server-info-head h1 { margin: 0; font-size: 20px; }
 .server-info-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.site-editor h2 { margin-top: 0; }
+.site-editor label { display: inline-block; margin-bottom: 6px; }
+.site-domain { margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.site-domain label { margin: 0; }
+.site-domain select {
+    max-width: 100%; padding: 6px 8px; font: inherit; color: var(--text);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+}
+.site-editor textarea {
+    display: block; width: 100%; resize: vertical; padding: 10px;
+    color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    font: 13px/1.5 Consolas, monospace;
+}
+.site-editor [role="status"]:empty, .site-index-error:empty { display: none; }
+.site-publish { border: 1px solid var(--line); padding: 10px 12px; border-radius: 8px; overflow-wrap: anywhere; }
 .dashboard { display: grid; gap: 12px; }
 .dashboard-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .dashboard-head h2, .dashboard-head h3, .dashboard-section > h3 { margin: 0; }

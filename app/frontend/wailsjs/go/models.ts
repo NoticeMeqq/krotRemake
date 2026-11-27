@@ -256,6 +256,10 @@ export namespace main {
 	        this.host = source["host"];
 	    }
 	}
+	export interface SitePage {
+	    html: string;
+	    version: string;
+	}
 	export interface ServerStats {
 	    uptime: string;
 	    booted_at: number;
