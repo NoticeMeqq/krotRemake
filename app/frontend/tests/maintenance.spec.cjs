@@ -78,8 +78,8 @@ test('requires a successful check and SSH key setup before advancing in the wiza
     const key = wizard.getByRole('button', {name: 'Перевести на ключ'});
     const next = wizard.getByRole('button', {name: 'Дальше'});
     await wizard.getByLabel('IP-адрес').fill(entry.host);
-    const password = wizard.getByLabel('Пароль root');
-    await password.fill('fixture');
+    const credentialsField = wizard.getByLabel('Пароль root');
+    await credentialsField.fill('fixture');
     await check.click();
     await expect(wizard.getByText(/Узел недоступен/)).toBeVisible();
     await expect(key).toBeDisabled();
@@ -90,7 +90,7 @@ test('requires a successful check and SSH key setup before advancing in the wiza
     await expect(key).toBeEnabled();
     await expect(next).toBeDisabled();
     await key.click();
-    await expect(password).toHaveValue('');
+    await expect(credentialsField).toHaveValue('');
     await next.click();
     await expect(wizard.getByRole('heading', {name: 'Домен', exact: true})).toBeVisible();
     expect(calls('WBootstrap')).toEqual([[{
