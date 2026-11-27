@@ -37,8 +37,8 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
         with: {go-version-file: go.mod}
       - run: go vet $(go list -e ./... | grep -v /app) && go test $(go list -e ./... | grep -v /app)
       - name: CLI под все платформы
@@ -51,7 +51,7 @@ jobs:
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$V -X main.updateRepo=$GITHUB_REPOSITORY" \
               -o "dist/krot-cli-$V-$name-$arch$ext" ./cmd/krot
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with: {name: cli, path: dist/*}
 
   app-linux:
@@ -63,10 +63,10 @@ jobs:
           - {runner: ubuntu-22.04-arm, arch: arm64}
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
         with: {go-version-file: go.mod}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with: {node-version: "${{ env.NODE_VERSION }}"}
       - run: sudo apt-get update -q && sudo apt-get install -y -q libgtk-3-dev libwebkit2gtk-4.1-dev
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
@@ -85,7 +85,7 @@ jobs:
           cp packaging/linux/krot.desktop packaging/linux/install.sh packaging/linux/README.txt dist/$d/
           cp LICENSE dist/$d/
           tar -C dist -czf dist/$d.tar.gz $d && rm -rf dist/$d
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with: {name: "app-linux-${{ matrix.arch }}", path: dist/*.tar.gz}
 
   app-windows:
@@ -95,10 +95,10 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
         with: {go-version-file: go.mod}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with: {node-version: "${{ env.NODE_VERSION }}"}
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
       - run: jq --arg v "${{ needs.version.outputs.v }}" '.info.productVersion=$v' app/wails.json > w && mv w app/wails.json
@@ -107,17 +107,17 @@ jobs:
         run: wails build -platform windows/${{ matrix.arch }} -trimpath -ldflags "-X main.version=${{ needs.version.outputs.v }} -X main.updateRepo=${{ github.repository }}" -o krot-app.exe
       - env: {V: "${{ needs.version.outputs.v }}"}
         run: mkdir -p dist && cp app/build/bin/krot-app.exe "dist/krot-app-$V-windows-${{ matrix.arch }}.exe"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with: {name: "app-windows-${{ matrix.arch }}", path: dist/*}
 
   app-macos:
     needs: version
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
         with: {go-version-file: go.mod}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with: {node-version: "${{ env.NODE_VERSION }}"}
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
       - run: jq --arg v "${{ needs.version.outputs.v }}" '.info.productVersion=$v' app/wails.json > w && mv w app/wails.json
@@ -130,19 +130,19 @@ jobs:
           mkdir -p dist
           app=$(ls -d app/build/bin/*.app | head -1)
           ditto -c -k --keepParent "$app" "dist/krot-app-$V-macos-universal.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with: {name: app-macos, path: dist/*}
 
   release:
     needs: [version, cli, app-linux, app-windows, app-macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
         with: {path: dist, merge-multiple: true}
       - name: контрольные суммы
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: github.ref_type != 'tag'
         with: {name: release-preview, path: dist/*}
       - name: GitHub Release
