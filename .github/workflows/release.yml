@@ -8,8 +8,6 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: [main]
-    paths: [packaging/release-notes/v0.3.1.md]
   workflow_dispatch:
     inputs:
       version:
@@ -36,8 +34,6 @@ jobs:
         run: |
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
             v="${GITHUB_REF_NAME#v}"
-          elif [ "$GITHUB_EVENT_NAME" = push ]; then
-            v=0.3.1
           else
             v="$REQUESTED_VERSION"
           fi
@@ -153,19 +149,15 @@ jobs:
       - name: контрольные суммы
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@v7.0.2
-        if: github.event_name == 'workflow_dispatch' && github.ref_type != 'tag'
+        if: github.ref_type != 'tag'
         with: {name: release-preview, path: dist/*}
       - name: GitHub Release
-        if: github.ref_type == 'tag' || github.event_name == 'push'
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.version.outputs.v }}
         run: |
           tag=$GITHUB_REF_NAME
-          if [ "$GITHUB_REF_TYPE" != tag ]; then
-            tag=v0.3.1
-            git push origin "$GITHUB_SHA:refs/tags/$tag"
-          fi
           template=packaging/release-notes.md
           if [ -f "packaging/release-notes/$tag.md" ]; then
             template="packaging/release-notes/$tag.md"
