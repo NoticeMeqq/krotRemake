@@ -259,11 +259,12 @@ echo "  • мёртвая рука: откат через %[5]d с, если п
 	}
 	defer cl2.Close()
 	done := fmt.Sprintf(`set -e
+%[6]s
 %[1]s
 mkdir -p %[5]s
 echo "installed=$(date +%%Y-%%m-%%dT%%H:%%M:%%S%%z) run=%[2]s code=%[4]s" > %[5]s/%[3]s
 echo "  • новое подключение есть, мёртвая рука снята"
-`, pf.disarm(run, unit), run, module, CodeHash(module), pf.marks)
+`, pf.disarm(run, unit), run, module, CodeHash(module), pf.marks, recordConfig(module, run, params))
 	out, err = sh(cl2, done)
 	emit(out)
 	if err != nil {

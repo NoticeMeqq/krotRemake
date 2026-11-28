@@ -705,6 +705,9 @@ export namespace status {
 	    name: string;
 	    installed: string;
 	    code: string;
+	    expected?: string;
+	    baseline: boolean;
+	    issues?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Module(source);
@@ -715,6 +718,9 @@ export namespace status {
 	        this.name = source["name"];
 	        this.installed = source["installed"];
 	        this.code = source["code"];
+	        this.expected = source["expected"];
+	        this.baseline = source["baseline"];
+	        this.issues = source["issues"];
 	    }
 	}
 	export class Status {
@@ -733,6 +739,8 @@ export namespace status {
 	    checks: number;
 	    failed: string[];
 	    at: string;
+	    compared: boolean;
+	    audit_error?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -755,6 +763,8 @@ export namespace status {
 	        this.checks = source["checks"];
 	        this.failed = source["failed"];
 	        this.at = source["at"];
+	        this.compared = source["compared"];
+	        this.audit_error = source["audit_error"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

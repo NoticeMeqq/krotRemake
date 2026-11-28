@@ -61,6 +61,27 @@ test('reports traffic and confirms a reboot for the intended server', async ({pa
     expect(calls('RestartServer')).toEqual([[exit.name, exit.host]]);
 });
 
+test('shows code and configuration differences when checking a server', async ({page, openDesktop}) => {
+    let checked = false;
+    await openDesktop({
+        Status: (node) => ({
+            reachable: true, os: 'Ubuntu', compared: true, at: 'now',
+            modules: node === entry.name && checked ? [
+                {name: 'subscriptions', code: 'old', expected: 'new', issues: ['Изменён: /etc/vpnkit/sub.env']},
+                {name: 'xray', code: 'same', expected: 'same', baseline: false},
+                {name: 'monitoring', code: 'same', expected: 'same', baseline: true},
+            ] : [],
+        }),
+    });
+    const info = page.getByRole('region', {name: 'Серверы'});
+    await expect(info.getByText('Нет установленных модулей для сверки.')).toBeVisible();
+    checked = true;
+    await info.getByRole('button', {name: 'Проверить', exact: true}).click();
+    await expect(info.getByText('Совпадают: 1 · Требуют внимания: 1 · Сверены частично: 1')).toBeVisible();
+    await expect(info.getByText(/Версия кода отличается от этой сборки.*Изменён: \/etc\/vpnkit\/sub.env/)).toBeVisible();
+    await expect(info.getByText('xray — Нет эталона файлов с момента установки')).toBeVisible();
+});
+
 test('creates and verifies a backup separately from downloading an existing one', async ({page, openDesktop}) => {
     let finishBackup;
     let archives = [];

@@ -252,7 +252,7 @@ func (a *App) Status(name string) (status.Status, error) {
 	if err != nil {
 		return status.Status{}, err
 	}
-	return status.Get(a.ctx, n), nil
+	return status.Checked(a.ctx, n), nil
 }
 
 // ClientList — клиенты узла по видам. Ошибка вида не мешает остальным (модуля может не быть).

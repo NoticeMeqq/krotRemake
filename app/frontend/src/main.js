@@ -31,7 +31,8 @@ function dotClass(st) {
     if (!st) return 'dot';
     if (st.busy) return 'dot busy';
     if (!st.reachable || st.error) return 'dot bad';
-    if (st.watch && st.failed && st.failed.length) return 'dot warn';
+    if ((st.watch && st.failed?.length) || st.modules?.some((m) =>
+        (m.expected && m.code && m.code !== m.expected) || m.issues?.length)) return 'dot warn';
     return 'dot ok';
 }
 
@@ -366,7 +367,33 @@ function statusContent(st) {
     return el('div', {},
         el('h3', {}, 'Состояние'), facts,
         el('h3', {style: 'margin-top:14px'}, 'Модули'), modBlock,
-        el('h3', {style: 'margin-top:14px'}, 'Проверки'), checks);
+        el('h3', {style: 'margin-top:14px'}, 'Проверки'), checks,
+        st.compared ? moduleComparison(st) : null);
+}
+
+function moduleComparison(st) {
+    const heading = el('h3', {style: 'margin-top:14px'}, 'Сверка модулей с Кротом');
+    if (st.audit_error) return el('div', {}, heading, el('div', {class: 'err'}, st.audit_error));
+    if (!st.modules?.length) return el('div', {}, heading, el('p', {class: 'muted'}, 'Нет установленных модулей для сверки.'));
+    const rows = st.modules.map((m) => {
+        const issues = [];
+        if (!m.expected) issues.push('Модуля нет в этой сборке Крота');
+        else if (!m.code) issues.push('В метке установки нет версии кода');
+        else if (m.code !== m.expected) issues.push('Версия кода отличается от этой сборки');
+        issues.push(...(m.issues || []));
+        const needsAttention = issues.length > 0;
+        if (m.expected && !m.baseline) issues.push('Нет эталона файлов с момента установки');
+        return {name: m.name, issues, needsAttention, baseline: m.baseline};
+    });
+    const attention = rows.filter((m) => m.needsAttention).length;
+    const partial = rows.filter((m) => !m.needsAttention && !m.baseline).length;
+    const match = rows.length - attention - partial;
+    return el('div', {}, heading,
+        el('details', {class: 'module-comparison', open: attention ? '' : undefined},
+            el('summary', {class: attention ? 'warn' : 'muted'},
+                'Совпадают: ' + match + ' · Требуют внимания: ' + attention + ' · Сверены частично: ' + partial),
+            el('ul', {class: 'fails'}, rows.map((m) => el('li', {},
+                el('strong', {}, m.name), ' — ', m.issues.length ? m.issues.join(' · ') : 'Код и проверяемые файлы совпадают')))));
 }
 
 // ---- клиенты --------------------------------------------------------------

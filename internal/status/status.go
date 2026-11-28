@@ -9,33 +9,40 @@ import (
 	"time"
 
 	"github.com/xDarkOne/krot/internal/inventory"
+	"github.com/xDarkOne/krot/internal/modexec"
 	"github.com/xDarkOne/krot/internal/remote"
+	"github.com/xDarkOne/krot/modules"
 )
 
 // Module — модуль установщика на узле (метка /var/lib/vpnkit/modules/<имя>).
 type Module struct {
-	Name      string `json:"name"`
-	Installed string `json:"installed"` // когда поставлен (ISO 8601)
-	Code      string `json:"code"`      // версия кода модуля на узле (пусто — поставлен до учёта версий)
+	Name      string   `json:"name"`
+	Installed string   `json:"installed"` // когда поставлен (ISO 8601)
+	Code      string   `json:"code"`      // версия кода модуля на узле (пусто — поставлен до учёта версий)
+	Expected  string   `json:"expected,omitempty"`
+	Baseline  bool     `json:"baseline"`
+	Issues    []string `json:"issues,omitempty"`
 }
 
 // Status — сводка по узлу.
 type Status struct {
-	Node      string   `json:"node"`
-	Role      string   `json:"role"`
-	Host      string   `json:"host"`
-	Reachable bool     `json:"reachable"`
-	Error     string   `json:"error,omitempty"`
-	OS        string   `json:"os"`
-	Kernel    string   `json:"kernel"`
-	Uptime    string   `json:"uptime"`
-	Disk      string   `json:"disk"`
-	Mem       string   `json:"mem"`
-	Modules   []Module `json:"modules"`
-	Watch     bool     `json:"watch"`  // стоит ли мониторинг
-	Checks    int      `json:"checks"` // всего проверок vpnkit-watch
-	Failed    []string `json:"failed"` // текст непрошедших
-	At        string   `json:"at"`
+	Node       string   `json:"node"`
+	Role       string   `json:"role"`
+	Host       string   `json:"host"`
+	Reachable  bool     `json:"reachable"`
+	Error      string   `json:"error,omitempty"`
+	OS         string   `json:"os"`
+	Kernel     string   `json:"kernel"`
+	Uptime     string   `json:"uptime"`
+	Disk       string   `json:"disk"`
+	Mem        string   `json:"mem"`
+	Modules    []Module `json:"modules"`
+	Watch      bool     `json:"watch"`  // стоит ли мониторинг
+	Checks     int      `json:"checks"` // всего проверок vpnkit-watch
+	Failed     []string `json:"failed"` // текст непрошедших
+	At         string   `json:"at"`
+	Compared   bool     `json:"compared"`
+	AuditError string   `json:"audit_error,omitempty"`
 }
 
 // Проверки — с отдельным файлом состояния: прогон с пульта не влияет на счётчики оповещений
@@ -56,6 +63,15 @@ fi
 
 // Get собирает состояние узла.
 func Get(ctx context.Context, n *inventory.Node) Status {
+	return get(ctx, n, false)
+}
+
+// Checked also compares installed modules and their files with this build.
+func Checked(ctx context.Context, n *inventory.Node) Status {
+	return get(ctx, n, true)
+}
+
+func get(ctx context.Context, n *inventory.Node, compare bool) Status {
 	st := Status{Node: n.Name, Role: n.Role, Host: n.Host, At: time.Now().Format(time.RFC3339)}
 	cl, err := remote.Dial(n)
 	if err != nil {
@@ -69,6 +85,7 @@ func Get(ctx context.Context, n *inventory.Node) Status {
 		st.Error = err.Error()
 		return st
 	}
+	seen := map[string]bool{}
 	for _, l := range strings.Split(r.Stdout, "\n") {
 		k, v, ok := strings.Cut(l, "=")
 		if !ok {
@@ -89,6 +106,10 @@ func Get(ctx context.Context, n *inventory.Node) Status {
 			st.Mem = v
 		case "MOD":
 			f := strings.Fields(v)
+			if len(f) == 0 || seen[f[0]] {
+				continue
+			}
+			seen[f[0]] = true
 			m := Module{Name: f[0]}
 			if len(f) > 1 {
 				m.Installed = f[1]
@@ -110,7 +131,39 @@ func Get(ctx context.Context, n *inventory.Node) Status {
 			}
 		}
 	}
+	if compare {
+		compareModules(ctx, cl, n, &st)
+	}
 	return st
+}
+
+func compareModules(ctx context.Context, cl *remote.Client, n *inventory.Node, st *Status) {
+	st.Compared = true
+	current, err := modules.Load()
+	if err != nil {
+		st.AuditError = err.Error()
+		return
+	}
+	var names []string
+	for i := range st.Modules {
+		m := &st.Modules[i]
+		if _, known := current[m.Name]; known {
+			m.Expected = modexec.CodeHash(m.Name)
+			names = append(names, m.Name)
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	results, err := modexec.AuditConfig(ctx, cl, names, st.Role, modexec.Params(n, "client-awg")["IFACE"])
+	if err != nil {
+		st.AuditError = err.Error()
+		return
+	}
+	for i := range st.Modules {
+		m := &st.Modules[i]
+		m.Baseline, m.Issues = results[m.Name].Baseline, results[m.Name].Issues
+	}
 }
 
 // Duration — «3 дня 4 ч», «5 ч 12 мин», «42 мин».
