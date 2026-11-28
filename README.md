@@ -1,6 +1,6 @@
 <p align="center"><img src="packaging/icon/krot-256.png" width="160" alt="Крот"></p>
 
-<h1 align="center">Крот</h1>
+<h1 align="center">KrotRemake</h1>
 
 <p align="center"><b>Роет туннели под любыми стенами.</b><br>Свой VPN на своих серверах — без консоли.</p>
 
