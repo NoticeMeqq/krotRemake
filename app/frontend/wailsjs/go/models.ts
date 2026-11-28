@@ -1,3 +1,22 @@
+export namespace clients {
+    export class SubscriptionSettings {
+        mtu?: number;
+        dns?: string[];
+        keepalive?: number;
+
+        static createFrom(source: any = {}) {
+            return new SubscriptionSettings(source);
+        }
+
+        constructor(source: any = {}) {
+            if ('string' === typeof source) source = JSON.parse(source);
+            this.mtu = source["mtu"];
+            this.dns = source["dns"];
+            this.keepalive = source["keepalive"];
+        }
+    }
+}
+
 export namespace alerts {
 	
 	export class Chat {
@@ -185,6 +204,7 @@ export namespace main {
 	    published: string[];
 	    delivery: boolean | null;
 	    combined: boolean;
+	    settings: boolean;
 	    errors: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
@@ -199,6 +219,7 @@ export namespace main {
 	        this.published = source["published"];
 	        this.delivery = source["delivery"];
 	        this.combined = source["combined"];
+	        this.settings = source["settings"];
 	        this.errors = source["errors"];
 	    }
 	}

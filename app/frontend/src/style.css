@@ -238,6 +238,10 @@ main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 80px; }
 .muted { color: var(--muted); }
 
 .access-card { container-type: inline-size; }
+.access-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.subscription-settings { width: min(100%, 460px); }
+.subscription-settings form { display: grid; gap: 12px; }
+.subscription-settings label { display: grid; gap: 5px; }
 .access-formats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
 .access-formats > div { min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
 .access-formats span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }

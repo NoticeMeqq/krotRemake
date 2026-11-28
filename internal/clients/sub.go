@@ -186,6 +186,40 @@ type SubSummary struct {
 	Published []string `json:"published"`
 	Delivery  *bool    `json:"delivery"`
 	Combined  bool     `json:"combined"`
+	Settings  bool     `json:"settings"`
+}
+
+// SubscriptionSettings overrides client-side AmneziaWG values in a subscription.
+type SubscriptionSettings struct {
+	MTU       *int     `json:"mtu,omitempty"`
+	DNS       []string `json:"dns,omitempty"`
+	Keepalive *int     `json:"keepalive,omitempty"`
+}
+
+// SubSettings reads or saves the named subscription. An empty name selects the node's defaults.
+func SubSettings(ctx context.Context, n *inventory.Node, name string, update *SubscriptionSettings) (SubscriptionSettings, error) {
+	var settings SubscriptionSettings
+	args := []string{"settings-show"}
+	if name != "" {
+		if !subName.MatchString(name) || strings.HasPrefix(name, "_") {
+			return settings, fmt.Errorf("недопустимое имя %q", name)
+		}
+		args = append(args, name)
+	}
+	var input string
+	if update != nil {
+		args[0] = "settings-save"
+		data, err := json.Marshal(update)
+		if err != nil {
+			return settings, err
+		}
+		input = string(data)
+	}
+	out, err := genWithInput(ctx, n, input, args...)
+	if err == nil {
+		err = json.Unmarshal([]byte(out), &settings)
+	}
+	return settings, err
 }
 
 func GetSubSummary(ctx context.Context, n *inventory.Node) (SubSummary, error) {

@@ -48,3 +48,28 @@ test('keeps separate connection options on a node without combined subscriptions
     await expect(type).toHaveValue('sub');
     await expect(type.locator('option')).toHaveText(['Подписка', 'Профиль AmneziaVPN']);
 });
+
+test('edits the master profile and an individual subscription independently', async ({page, openDesktop}) => {
+    const calls = await openDesktop({
+        Clients: () => ({delivery: true, combined: true, settings: true, sub: ['Kisik-Mobile'], errors: {}}),
+        SubscriptionSettings: (_node, name) => name ? {mtu: 1260, keepalive: 0} : {},
+        SaveSubscriptionSettings: (_node, _name, settings) => settings,
+    });
+    const dialog = page.locator('#modal');
+    await page.getByRole('button', {name: 'Мастер-профиль'}).click();
+    await expect(dialog.getByRole('heading', {name: 'Мастер-профиль'})).toBeVisible();
+    await dialog.getByLabel('MTU, байт').fill('1250');
+    await dialog.getByRole('button', {name: 'Сохранить'}).click();
+    await expect(dialog).toBeHidden();
+    await page.getByRole('button', {name: 'Параметры подписки Kisik-Mobile'}).click();
+    await expect(dialog.getByLabel('MTU, байт')).toHaveValue('1260');
+    await expect(dialog.getByLabel(/Persistent keepalive/)).toHaveValue('0');
+    await dialog.getByLabel('MTU, байт').fill('1240');
+    await dialog.getByLabel(/DNS,/).fill('1.1.1.1, 1.0.0.1');
+    await dialog.getByRole('button', {name: 'Сохранить'}).click();
+    await expect(dialog).toBeHidden();
+    expect(calls('SaveSubscriptionSettings')).toEqual([
+        [entry.name, '', {mtu: 1250}],
+        [entry.name, 'Kisik-Mobile', {mtu: 1240, dns: ['1.1.1.1', '1.0.0.1'], keepalive: 0}],
+    ]);
+});

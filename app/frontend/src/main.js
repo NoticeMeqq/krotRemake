@@ -14,6 +14,7 @@ import {checkUpdates} from './updates.js';
 import {openVersions} from './versions.js';
 import {openDashboard} from './dashboard.js';
 import {openSite} from './site.js';
+import {openSubscriptionSettings} from './subscription-settings.js';
 
 const statusCache = {};   // узел → последний Status
 let state = {nodes: []};
@@ -383,8 +384,15 @@ async function loadClients(name) {
 
 function clientsCard(node) {
     const c = clientCache[node];
+    const settingsButton = (name, label) => el('button', {
+        class: 'ghost small',
+        'aria-label': name ? 'Параметры подписки ' + name : label,
+        onclick: () => openSubscriptionSettings(node, name, c.settings),
+    }, label);
     const head = el('h3', {class: 'bar'}, 'Клиенты',
-        el('button', {class: 'ghost small', onclick: () => OpenClientsFolder(node).catch((e) => toast(errText(e), true))}, 'Папка с файлами'));
+        el('span', {class: 'access-actions'},
+            c?.delivery ? settingsButton('', 'Мастер-профиль') : null,
+            el('button', {class: 'ghost small', onclick: () => OpenClientsFolder(node).catch((e) => toast(errText(e), true))}, 'Папка с файлами')));
     if (!c || c.loading) return el('div', {class: 'card'}, head, el('div', {class: 'muted'}, 'Загружаю список…'));
     if (c.error) return el('div', {class: 'card'}, head, el('div', {class: 'err'}, c.error));
     const errors = c.errors || {};
@@ -411,7 +419,8 @@ function clientsCard(node) {
             return el('div', {class: 'access-row'},
                 el('strong', {class: 'access-name'}, name),
                 el('div', {class: 'access-cell'}, el('span', {class: 'access-mobile-label'}, 'Подписка'),
-                    hasSub ? clientOpenButton(node, 'sub', name, 'Открыть подписку') : el('span', {class: 'muted'}, 'Нет подписки')),
+                    hasSub ? clientOpenButton(node, 'sub', name, 'Открыть подписку') : el('span', {class: 'muted'}, 'Нет подписки'),
+                    hasSub && c.delivery ? settingsButton(name, 'Параметры') : null),
                 el('div', {class: 'access-cell'}, el('span', {class: 'access-mobile-label'}, 'AmneziaVPN'),
                     el('span', {class: isPublished ? 'access-state published' : 'access-state'}, status),
                     hasAWG ? clientOpenButton(node, 'awg', name, 'Открыть профиль') : null,

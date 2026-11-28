@@ -15,6 +15,7 @@
   amnezia-publish <имя>   опубликовать профиль vpn:// из stdin
   add-amnezia <имя>       создать подписку с профилем vpn:// из stdin
   amnezia-unpublish <имя> убрать ссылку на профиль
+  settings-show|settings-save [имя]   параметры AmneziaWG или мастер-профиля; запись читает JSON из stdin
   list             имена клиентов
   tg-add|tg-del|tg-show <имя>, tg-list   то же для пользователей MTProxy (telemt)
 MTProxy бывает двух видов (mtproxy.env, BACKEND): telemt, который ставит сам vpnkit, или
@@ -25,6 +26,7 @@ MTProxyL (BACKEND=mtproxyl, вид по умолчанию) — тогда по�
 """
 import base64
 import datetime
+import ipaddress
 import json
 import os
 import re
@@ -223,9 +225,8 @@ def links(name, c, u, x, h):
     return out
 
 
-def amnezia_share_link(name, profile):
-    """Convert Krot's exported vpn:// profile to INCY's mixed-feed entry."""
-    link = profile["link"]
+def amnezia_profile(name, link, settings):
+    """Render INCY and AmneziaVPN exports from the same client settings."""
     if not re.fullmatch(r"vpn://[A-Za-z0-9_-]{1,16377}", link):
         return None
     try:
@@ -238,16 +239,59 @@ def amnezia_share_link(name, profile):
         raw = decoder.decompress(packet[4:], size + 1)
         if len(raw) != size or not decoder.eof or decoder.unused_data:
             return None
-        for container in json.loads(raw)["containers"]:
+        profile = json.loads(raw)
+        for container in profile["containers"]:
             if container.get("container") != "amnezia-awg2":
                 continue
-            conf = json.loads(container["awg"]["last_config"])["config"]
+            awg = container["awg"]
+            config = json.loads(awg["last_config"])
+            conf = config["config"]
             if isinstance(conf, str) and "[Interface]" in conf and "[Peer]" in conf:
+                if settings:
+                    if "mtu" in settings:
+                        config["mtu"] = str(settings["mtu"])
+                        conf = set_conf_value(conf, "Interface", "MTU", config["mtu"])
+                    if "dns" in settings:
+                        dns = settings["dns"]
+                        profile["dns1"], profile["dns2"] = dns[0], dns[-1]
+                        conf = set_conf_value(conf, "Interface", "DNS", ", ".join(dns))
+                    if "keepalive" in settings:
+                        config["persistent_keep_alive"] = str(settings["keepalive"])
+                        conf = set_conf_value(conf, "Peer", "PersistentKeepalive", config["persistent_keep_alive"])
+                    config["config"] = conf
+                    awg["last_config"] = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+                    raw = json.dumps(profile, ensure_ascii=False, separators=(",", ":")).encode()
+                    packet = len(raw).to_bytes(4, "big") + zlib.compress(raw)
+                    link = "vpn://" + base64.urlsafe_b64encode(packet).decode().rstrip("=")
                 encoded = base64.urlsafe_b64encode(conf.encode()).decode().rstrip("=")
-                return f"amneziawg://{encoded}#{quote(name + ' · AmneziaWG', safe='')}"
+                return link, f"amneziawg://{encoded}#{quote(name + ' · AmneziaWG', safe='')}"
     except (ValueError, TypeError, KeyError, AttributeError, zlib.error):
         pass
     return None
+
+
+def set_conf_value(conf, section, key, value):
+    start = re.search(rf"(?m)^\[{section}\][ \t]*\r?\n", conf).end()
+    next_section = conf.find("\n[", start)
+    end = len(conf) if next_section == -1 else next_section + 1
+    line = f"{key} = {value}"
+    body, count = re.subn(rf"(?m)^[ \t]*{key}[ \t]*=[^\r\n]*", line, conf[start:end])
+    return conf[:start] + (body if count else line + "\n" + body) + conf[end:]
+
+
+def amnezia_share_link(name, profile):
+    exports = amnezia_profile(name, profile["link"], {})
+    return exports[1] if exports else None
+
+
+def publish_profile(outdir, profile, proxy_links, exports):
+    link, awg = exports
+    filename = profile["token"] + ".vpnuri"
+    feed_id = profile["feed_token"]
+    unified = base64.b64encode("\n".join(proxy_links + [awg]).encode()).decode()
+    write_if_changed(os.path.join(outdir, filename), link + "\n", 0o640, group="www-data")
+    write_if_changed(os.path.join(outdir, feed_id), unified, 0o640, group="www-data")
+    return filename, feed_id
 
 
 def subs(u, x, h, s):
@@ -263,12 +307,12 @@ def subs(u, x, h, s):
         profile = c.get("amnezia")
         if not profile:
             continue
-        awg = amnezia_share_link(name, profile)
-        if awg:
+        exports = amnezia_profile(name, profile["link"], c.get("settings", {}))
+        if exports:
             if not profile.get("feed_token"):
                 profile["feed_token"] = secrets.token_hex(16)
                 changed = True
-            combined[name] = awg
+            combined[name] = exports
     if changed:
         save_users(u)
     want = set()
@@ -283,15 +327,12 @@ def subs(u, x, h, s):
         os.chmod(path, 0o644)
         want.add(c["token"])
         profile = c.get("amnezia")
-        if profile:
+        if n in combined:
+            want.update(publish_profile(outdir, profile, proxy_links, combined[n]))
+        elif profile:
             filename = profile["token"] + ".vpnuri"
             write_if_changed(os.path.join(outdir, filename), profile["link"] + "\n", 0o640, group="www-data")
             want.add(filename)
-        if n in combined:
-            feed_id = profile["feed_token"]
-            unified = base64.b64encode("\n".join(proxy_links + [combined[n]]).encode()).decode()
-            write_if_changed(os.path.join(outdir, feed_id), unified, 0o640, group="www-data")
-            want.add(feed_id)
     # подписки удалённых клиентов не должны отвечать; в каталоге только наши файлы
     gone = 0
     for f in set(os.listdir(outdir)) - want:
@@ -644,9 +685,10 @@ def remove_amnezia_files(profile, s):
                     pass
 
 
-def new_subscription():
+def new_subscription(u):
     return {"uuid": str(uuid.uuid4()), "token": secrets.token_hex(16),
-            "hy2": secrets.token_urlsafe(16), "created": datetime.date.today().isoformat()}
+            "hy2": secrets.token_urlsafe(16), "created": datetime.date.today().isoformat(),
+            "settings": u.get("subscription_defaults", {}).copy()}
 
 
 def add_amnezia(name, u):
@@ -665,7 +707,7 @@ def add_amnezia(name, u):
                 return result
         sys.exit(f"клиент {name} уже есть")
 
-    c = new_subscription()
+    c = new_subscription(u)
     c["amnezia"] = {"token": secrets.token_hex(16), "link": link, "feed_token": secrets.token_hex(16)}
     clients[name] = c
     save_users(u)
@@ -710,6 +752,64 @@ def publish_amnezia(cmd, name, u):
     print(json.dumps(card(name, u), ensure_ascii=False))
 
 
+def read_settings():
+    try:
+        settings = json.loads(sys.stdin.read(4097))
+        if not isinstance(settings, dict) or settings.keys() - {"mtu", "dns", "keepalive"}:
+            raise ValueError("ожидался объект настроек")
+        for key, low, high in (("mtu", 576, 1500), ("keepalive", 0, 65535)):
+            if key in settings and (type(settings[key]) is not int or not low <= settings[key] <= high):
+                raise ValueError(f"{key}: целое число от {low} до {high}")
+        if "dns" in settings:
+            dns = settings["dns"]
+            if not isinstance(dns, list) or not 1 <= len(dns) <= 2 or not all(isinstance(ip, str) for ip in dns):
+                raise ValueError("DNS: один или два IPv4-адреса")
+            settings["dns"] = [str(ipaddress.IPv4Address(ip)) for ip in dns]
+        return settings
+    except ValueError as e:
+        sys.exit(f"недопустимые настройки: {e}")
+
+
+def subscription_settings(cmd, args):
+    s = env("sub")
+    if not s:
+        sys.exit("нет модуля subscriptions")
+    if len(args) > 1:
+        sys.exit("использование: vpnkit-gen.py settings-show|settings-save [имя]")
+    u = load_users()
+    if not args:
+        if cmd == "settings-save":
+            u["subscription_defaults"] = read_settings()
+            save_users(u)
+        print(json.dumps(u.get("subscription_defaults", {})))
+        return
+
+    name = args[0]
+    if name not in u["clients"]:
+        sys.exit(f"клиента {name} нет")
+    c = u["clients"][name]
+    old = c.get("settings", {})
+    settings = old if cmd == "settings-show" else read_settings()
+    if settings != old:
+        profile = c.get("amnezia")
+        if profile:
+            exports = amnezia_profile(name, profile["link"], settings)
+            if not exports or not profile.get("feed_token"):
+                sys.exit("не удалось подготовить опубликованный профиль AmneziaWG")
+            proxy_links = links(name, c, u, env("xray"), env("hy2"))
+        c["settings"] = settings
+        save_users(u)
+        if profile:
+            try:
+                publish_profile(s["OUTDIR"], profile, proxy_links, exports)
+            except (Exception, SystemExit):
+                c["settings"] = old
+                save_users(u)
+                publish_profile(s["OUTDIR"], profile, proxy_links, amnezia_profile(name, profile["link"], old))
+                raise
+    print(json.dumps(settings))
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"):
@@ -729,13 +829,15 @@ def main():
         sys.exit("нет /etc/vpnkit/xray.env — модуль xray не стоит")
     if tg and m.get("BACKEND") == "mtproxyl":
         return tg_mtproxyl(cmd, a)
+    if cmd in ("settings-show", "settings-save") and not tg:
+        return subscription_settings(cmd, a[1:])
     reg = "mtproto" if tg else "clients"
     if cmd == "list":
         clients = load_users()[reg]
         names = sorted(n for n in clients if not n.startswith("_"))
         if not tg and a[1:] == ["--summary"]:
             delivery = bool(env("sub"))
-            print(json.dumps({"names": names, "delivery": delivery, "combined": True,
+            print(json.dumps({"names": names, "delivery": delivery, "combined": True, "settings": delivery,
                               "published": [n for n in names if delivery and clients[n].get("amnezia")]}))
         elif names:
             print("\n".join(names))
@@ -754,7 +856,7 @@ def main():
         if tg:
             u[reg][name] = secrets.token_hex(16)
         else:
-            u[reg][name] = new_subscription()
+            u[reg][name] = new_subscription(u)
         save_users(u)
         build(quiet=True)
         print(json.dumps(tg_link(name, u, m) if tg else card(name, u), ensure_ascii=False))

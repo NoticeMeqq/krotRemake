@@ -6,6 +6,14 @@ export function PublishSubAmnezia(arg1, arg2, arg3) {
   return window['go']['main']['App']['PublishSubAmnezia'](arg1, arg2, arg3);
 }
 
+export function SubscriptionSettings(arg1, arg2) {
+  return window['go']['main']['App']['SubscriptionSettings'](arg1, arg2);
+}
+
+export function SaveSubscriptionSettings(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveSubscriptionSettings'](arg1, arg2, arg3);
+}
+
 export function AddClient(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddClient'](arg1, arg2, arg3);
 }

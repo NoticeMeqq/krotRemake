@@ -263,6 +263,7 @@ type ClientList struct {
 	Published []string          `json:"published"`
 	Delivery  *bool             `json:"delivery"`
 	Combined  bool              `json:"combined"`
+	Settings  bool              `json:"settings"`
 	Errors    map[string]string `json:"errors"`
 }
 
@@ -291,7 +292,7 @@ func (a *App) Clients(name string) (ClientList, error) {
 		out.Errors["sub"] = err.Error()
 	} else {
 		out.Sub, out.Published, out.Delivery = summary.Names, summary.Published, summary.Delivery
-		out.Combined = summary.Combined
+		out.Combined, out.Settings = summary.Combined, summary.Settings
 	}
 	if _, l, err := clients.TGClient(a.ctx, n, "list", ""); err != nil {
 		out.Errors["tg"] = err.Error()
@@ -299,6 +300,26 @@ func (a *App) Clients(name string) (ClientList, error) {
 		out.TG = l
 	}
 	return out, nil
+}
+
+// SubscriptionSettings opens the editor for one subscription or the node's master profile.
+func (a *App) SubscriptionSettings(node, name string) (clients.SubscriptionSettings, error) {
+	n, err := a.node(node)
+	if err != nil {
+		return clients.SubscriptionSettings{}, err
+	}
+	return clients.SubSettings(a.ctx, n, name, nil)
+}
+
+// SaveSubscriptionSettings updates the subscription or the defaults used by newly created profiles.
+func (a *App) SaveSubscriptionSettings(node, name string, settings clients.SubscriptionSettings) (clients.SubscriptionSettings, error) {
+	a.clientMu.Lock()
+	defer a.clientMu.Unlock()
+	n, err := a.node(node)
+	if err != nil {
+		return clients.SubscriptionSettings{}, err
+	}
+	return clients.SubSettings(a.ctx, n, name, &settings)
 }
 
 // CardView — карточка клиента для экрана: QR картинкой.
